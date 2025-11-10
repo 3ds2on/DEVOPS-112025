@@ -1,4 +1,3 @@
-.vagrant/boxes/
 boxes/
-boxes/
-boxes/
+*.vmdk
+.vagrant/
