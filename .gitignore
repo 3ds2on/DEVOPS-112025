@@ -1,3 +1,4 @@
 boxes/
 *.vmdk
 .vagrant/
+insecure_private_keys/
