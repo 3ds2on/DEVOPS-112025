@@ -1,0 +1,129 @@
+---
+- name: Instalação completa do Jenkins + plugins essenciais (sem jenkins-plugin-cli)
+  hosts: controle
+  become: yes
+
+  vars:
+    jenkins_deb_url: "http://mirrors.jenkins.io/debian-stable/jenkins_2.492.2_all.deb"
+    jenkins_admin_user: "admin"
+    jenkins_admin_pass: "admin123"
+    jenkins_plugins:
+      - ionicons-api
+      - workflow-aggregator
+      - workflow-job
+      - workflow-cps
+      - workflow-multibranch
+      - pipeline-model-definition
+      - pipeline-stage-view
+	  - pipeline-rest-api
+      - git
+      - git-client
+      - branch-api
+      - scm-api
+      - credentials
+      - credentials-binding
+      - matrix-project
+      - matrix-auth
+      - junit
+      - structs
+      - durable-task
+      - display-url-api
+      - font-awesome-api
+
+  tasks:
+
+    - name: Instalar dependências
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - openjdk-17-jre
+          - git
+          - unzip
+        state: present
+        update_cache: yes
+
+    - name: Baixar Jenkins .deb ignorando SSL
+      get_url:
+        url: "{{ jenkins_deb_url }}"
+        dest: /tmp/jenkins.deb
+        validate_certs: no
+
+    - name: Instalar Jenkins via dpkg
+      apt:
+        deb: /tmp/jenkins.deb
+        state: present
+
+    - name: Corrigir dependências
+      apt:
+        update_cache: yes
+        state: present
+        allow_unauthenticated: yes
+
+    - name: Parar Jenkins antes da instalação dos plugins
+      systemd:
+        name: jenkins
+        state: stopped
+
+    - name: Preparar diretório de plugins
+      file:
+        path: /var/lib/jenkins/plugins
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: "0755"
+
+    - name: Baixar plugins essenciais manualmente
+      get_url:
+        url: "https://updates.jenkins.io/download/plugins/{{ item }}/latest/{{ item }}.hpi"
+        dest: "/var/lib/jenkins/plugins/{{ item }}.jpi"
+        validate_certs: no
+      loop: "{{ jenkins_plugins }}"
+
+    - name: Ajustar permissões dos plugins
+      file:
+        path: /var/lib/jenkins/plugins
+        owner: jenkins
+        group: jenkins
+        recurse: yes
+
+    - name: Criar diretório init.groovy.d
+      file:
+        path: /var/lib/jenkins/init.groovy.d
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: "0755"
+
+    - name: Criar script Groovy para usuário admin
+      copy:
+        dest: /var/lib/jenkins/init.groovy.d/basic-security.groovy
+        owner: jenkins
+        group: jenkins
+        mode: "0644"
+        content: |
+          #!groovy
+          import jenkins.model.*
+          import hudson.security.*
+          def instance = Jenkins.get()
+          def realm = new HudsonPrivateSecurityRealm(false)
+          realm.createAccount("{{ jenkins_admin_user }}","{{ jenkins_admin_pass }}")
+          instance.setSecurityRealm(realm)
+          def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+          strategy.setAllowAnonymousRead(false)
+          instance.setAuthorizationStrategy(strategy)
+          instance.save()
+
+    - name: Desabilitar Setup Wizard
+      blockinfile:
+        path: /etc/default/jenkins
+        create: yes
+        block: |
+          JAVA_ARGS="-Djenkins.install.runSetupWizard=false"
+
+    - name: Reiniciar Jenkins
+      systemd:
+        name: jenkins
+        enabled: yes
+        state: restarted

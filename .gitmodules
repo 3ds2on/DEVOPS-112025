@@ -1,0 +1,3 @@
+[submodule "ansible/devops"]
+    path = ansible/devops
+    url = git@github.com:SEU_USUARIO/devops.git
